@@ -6,11 +6,10 @@ import java.util.List;
 
 import org.apache.commons.io.output.ProxyOutputStream;
 
-public class TeeListOutputStream extends ProxyOutputStream {
-	private List<OutputStream> branchList;
+public class TeeListOutputStream extends OutputStream {
+	private final List<? extends OutputStream> branchList;
 
 	public TeeListOutputStream(final List<? extends OutputStream> branchList) {
-		super(branchList.get(0));
 		this.branchList = branchList;
 	}
 
