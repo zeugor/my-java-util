@@ -24,7 +24,7 @@ public class ByteStreamUtilTest {
 	
 	private static final Random r = new Random(Instant.now().toEpochMilli());
 
-	private static final int BUFFER_LENGTH = 256;
+	private static final int BUFFER_LENGTH = 128;
 
 	private static int getRandomSeconds() {
 		int min = 0;
@@ -40,8 +40,8 @@ public class ByteStreamUtilTest {
 
 		final int NUMBER_OF_SPLITS = 3;
 
-		Set<InputStream> set = //ByteStreamUtil.splitInputStream(inputStream, NUMBER_OF_SPLITS);
-				ByteStreamUtil.splitInputStream(inputStream);
+		List<InputStream> list = //ByteStreamUtil.splitInputStream(inputStream, NUMBER_OF_SPLITS);
+				ByteStreamUtil.splitInputStream(inputStream, NUMBER_OF_SPLITS);
 //
 //		List<Future<Integer>> futuresList = new ArrayList<>();
 //
@@ -52,6 +52,11 @@ public class ByteStreamUtilTest {
 //			futuresList.add(size);
 //		}
 		
+		for (int i = 0; i < list.size(); i++) {
+
+			readEveryNSec(i, list.get(i), getRandomSeconds());
+			
+		}
 		
 
 
@@ -77,7 +82,14 @@ public class ByteStreamUtilTest {
 
 	static Future<Integer> readEveryNSec(int idx, InputStream in, int seconds) {
 
-		return Executors.newSingleThreadExecutor().submit(() -> read(idx, in, seconds));		
+		new Thread() {
+			public void run() {
+				read(idx, in, seconds);
+			}
+		}.start();
+		
+//		return Executors.newSingleThreadExecutor().submit(() -> read(idx, in, seconds));
+		return null;
 	}
 	
 	static Integer read(int idx, InputStream in, int seconds) {
@@ -100,10 +112,17 @@ public class ByteStreamUtilTest {
 				array = new byte[BUFFER_LENGTH];
 			}
 
-			in.close();
+			
 		} catch (IOException | InterruptedException e) {
 			// TODO Auto-generated catch block
 			e.printStackTrace();
+		} finally {
+			try {
+				in.close();
+			} catch (IOException e) {
+				// TODO Auto-generated catch block
+				e.printStackTrace();
+			}
 		}
 
 //					System.out.println("readEvery3Sec out");
@@ -125,7 +144,10 @@ public class ByteStreamUtilTest {
 
 						Thread.sleep(1000);
 
-						baos.write((c++ + ")source\n").getBytes());
+						String s = c++ + ")source\n";
+//						System.out.println("sout: " + s);
+						
+						baos.write(s.getBytes());
 
 						if (c > streamSize) {
 							baos.close();

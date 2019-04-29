@@ -6,7 +6,9 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
+import java.nio.channels.IllegalSelectorException;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -14,6 +16,7 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executors;
 import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 
 import org.apache.commons.io.input.TeeInputStream;
 import org.apache.commons.io.output.TeeOutputStream;
@@ -23,7 +26,7 @@ public class ByteStreamUtil {
 
 	private static final Logger log = Logger.getLogger(ByteStreamUtil.class);
 
-	public static final Set<InputStream> splitInputStream(InputStream input) throws IOException {
+	public static final List<InputStream> splitInputStream(InputStream input) throws IOException {
 		
 		PipedOutputStream pipedOut01 = new PipedOutputStream();
 		PipedOutputStream pipedOut02 = new PipedOutputStream();
@@ -34,23 +37,31 @@ public class ByteStreamUtil {
 
 		Executors.newSingleThreadExecutor().submit(tin::readAllBytes);	
 		
-		Set<InputStream> inputStreamSet = new HashSet<>();
-		inputStreamSet.add(new PipedInputStream(pipedOut01));
-		inputStreamSet.add(new PipedInputStream(pipedOut02));		
+		List<InputStream> inputStreamList = new ArrayList<>();
+		inputStreamList.add(new PipedInputStream(pipedOut01));
+		inputStreamList.add(new PipedInputStream(pipedOut02));		
 		
-		return Collections.unmodifiableSet(inputStreamSet);
+		return Collections.unmodifiableList(inputStreamList);
 	}
 
-	public static final Set<InputStream> splitInputStream(InputStream input, int numberOfSplits) {
-		checkArgs(input, numberOfSplits);
-
-		List<PipedOutputStream> pipedOutList = new ArrayList<>();
-
-		TeeInputStream tin = createSplits(input, pipedOutList, numberOfSplits);
-
-		startTransmission(tin);
+	public static final List<InputStream> splitInputStream(InputStream input, int numberOfSplits) {
 		
-		return toPipedInputStreamSet(pipedOutList);
+		checkArgs(input, numberOfSplits);
+		
+		List<PipedOutputStream> pipedOutList = createPipedOutputStreamList(numberOfSplits);
+		List<InputStream> inputStreamList = connectToPipedInputStreams(pipedOutList);
+		
+		TeeListOutputStream tout = new TeeListOutputStream(pipedOutList);
+
+		TeeInputStream tin = new TeeInputStream(input, tout, true); 
+		
+		startTransmission(tin);		
+				
+		if (numberOfSplits != inputStreamList.size()) {
+			throw new IllegalStateException("incorrect number of generated inputstreams");
+		}
+		
+		return Collections.unmodifiableList(inputStreamList);
 	}
 
 	private static final void checkArgs(InputStream input, int numberOfSplits) {
@@ -62,55 +73,37 @@ public class ByteStreamUtil {
 			throw new IllegalArgumentException("number-of-splits must be bigger or equal than 2.");
 		}
 	}
-
-	private static final TeeInputStream createSplits(InputStream input,
-			List<PipedOutputStream> pipedOutList, int num) {
-		
-		if (pipedOutList.isEmpty()) {
+	
+	private static List<PipedOutputStream> createPipedOutputStreamList(int listSize) {
+		List<PipedOutputStream> pipedOutList = new ArrayList<>();
+		for (int i = 0; i < listSize; i++) {
 			pipedOutList.add(new PipedOutputStream());
 		}
-
-		TeeInputStream tin = null;
-		InputStream newInput = input;
-		for (int i = 0; i < num - 1; i++) {
-			tin = (TeeInputStream) createAnSplit(newInput, pipedOutList);
-			newInput = tin;
-		}		
-
-		if (num != pipedOutList.size()) {
-			throw new IllegalStateException("invalid number of splits. Should be: " + num + ", but it is: " + pipedOutList.size());
-		}
-
-		return  tin;
-	}
-
-	private static final TeeInputStream createAnSplit(InputStream input, List<PipedOutputStream> pipedOutList) {
-		
-		PipedOutputStream lastListedPipedOut = pipedOutList.get(pipedOutList.size() - 1);
-
-		PipedOutputStream pipedOut = new PipedOutputStream();
-
-		OutputStream teeOutputStream = new TeeOutputStream(lastListedPipedOut, pipedOut);
-		
-		pipedOutList.add(pipedOut);
-
-		TeeInputStream tin = new TeeInputStream(input, teeOutputStream, true); 
-
-		return tin;
+		return pipedOutList;
 	}
 	
 	private static final void startTransmission(TeeInputStream tin) {
-		Executors
-			.newSingleThreadExecutor()
-			.submit(tin::readAllBytes);	
+		new Thread() {
+			public void run() {
+				try {
+					tin.readAllBytes();
+				} catch (IOException e) {
+					// TODO Auto-generated catch block
+					e.printStackTrace();
+				}
+			}
+		}.start();
+//		Executors
+//			.newSingleThreadExecutor()
+//			.submit(tin::readAllBytes);	
 	}
 
-	private static final Set<InputStream> toPipedInputStreamSet(List<PipedOutputStream> pipedOutList) {
-		return pipedOutList
+	private static final List<InputStream> connectToPipedInputStreams(List<PipedOutputStream> pipedOutList) {
+		return ((Collection<PipedOutputStream>) pipedOutList)
 				.stream()
 				.map(ByteStreamUtil::toPipedInputStream)
 				.filter(Objects::nonNull)
-				.collect(Collectors.toUnmodifiableSet()); 
+				.collect(Collectors.toUnmodifiableList()); 
 	}
 	
 	private static final PipedInputStream toPipedInputStream(PipedOutputStream pipedOut) {
