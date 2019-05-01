@@ -4,27 +4,11 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.util.List;
 
-import org.apache.commons.io.output.ProxyOutputStream;
-
 public class TeeListOutputStream extends OutputStream {
 	private final List<? extends OutputStream> branchList;
 
 	public TeeListOutputStream(final List<? extends OutputStream> branchList) {
 		this.branchList = branchList;
-	}
-
-	@Override
-	public synchronized void write(final byte[] b) throws IOException {
-		for (OutputStream branch : branchList) {
-			branch.write(b);
-		}
-	}
-
-	@Override
-	public synchronized void write(final byte[] b, final int off, final int len) throws IOException {
-		for (OutputStream branch : branchList) {
-			branch.write(b, off, len);
-		}
 	}
 
 	@Override
